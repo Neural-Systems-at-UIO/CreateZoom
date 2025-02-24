@@ -6,6 +6,7 @@ import zipfile
 import aiohttp
 import aiofiles
 import asyncio
+from io import BytesIO
 from aiofiles.os import makedirs, remove, path
 import shutil
 from datetime import datetime, timedelta
@@ -14,14 +15,6 @@ from typing import Dict, Optional
 import logging
 import sys
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("deepzoom.log")],
-)
-logger = logging.getLogger(__name__)
-
 # Constants
 DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(
     total=3600,  # 1 hour total timeout, mainly an issue with large file downloads
@@ -29,11 +22,22 @@ DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(
     sock_connect=60,  # 60 seconds to establish connection
     sock_read=300,  # 5 minutes socket read timeout
 )
-CHUNK_SIZE = 32 * 1024 * 1024
+CHUNK_SIZE = 64 * 1024 * 1024
 # To increase download stream speed
 DATA_ROOT = "/data"
 DOWNLOADS_DIR = os.path.join(DATA_ROOT, "downloads")
 OUTPUTS_DIR = os.path.join(DATA_ROOT, "outputs")
+
+# Update the logging configuration to use /data directory
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+logger = logging.getLogger(__name__)
+
 
 app = FastAPI()
 
@@ -47,11 +51,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# TODO Threaded test for performance
+
 # TODO Add origins
-# TODO Add token and user validation
-
-
 class TaskStore:
     """
     Manages tasks and their statuses
@@ -97,10 +98,13 @@ class TaskStore:
 
 
 class TaskManager:
+
+    PROCESS_WORKERS = 12
+
     def __init__(self):
-        self.semaphore = asyncio.Semaphore(6)
+        self.semaphore = asyncio.Semaphore(self.PROCESS_WORKERS)
         self.task_store = TaskStore()
-        logger.info("TaskManager initialized")
+        logger.info("TaskManager initialized with %d workers", self.PROCESS_WORKERS)
 
     async def add_task(self, task_id: str, path: str, target_path: str, token: str):
         self.task_store.add_task(task_id, {"path": path, "target_path": target_path})
@@ -161,7 +165,7 @@ class TaskManager:
 
                 # Cleanup
                 await cleanup_files(
-                    os.path.join("temp/downloads", os.path.basename(path)),
+                    os.path.join("data/downloads", os.path.basename(path)),
                     dzi_path,
                     zip_path,
                 )
@@ -178,7 +182,7 @@ class TaskManager:
                     },
                 )
                 await cleanup_files(
-                    os.path.join("temp/downloads", os.path.basename(path)),
+                    os.path.join(DOWNLOADS_DIR, os.path.basename(path)),
                     dzi_path if "dzi_path" in locals() else None,
                     zip_path if "zip_path" in locals() else None,
                 )
@@ -286,6 +290,9 @@ async def deepzoom(path: str):
 
 
 async def upload_zip(upload_path: str, zip_path: str, token: str):
+    """
+    Asynchronous definition for uploading zip file to EBrains hosted bucket
+    """
     url = f"https://data-proxy.ebrains.eu/api/v1/buckets/{upload_path}"
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -303,36 +310,18 @@ async def upload_zip(upload_path: str, zip_path: str, token: str):
                     status_code=400, detail="Upload URL not provided in response"
                 )
 
-        logger.info(f"Uploading to {upload_url}")
-
-        # Use chunked upload, as bigger files crashed!
-        async with aiofiles.open(zip_path, "rb") as file:
-            total_size = os.path.getsize(zip_path)
-            uploaded_size = 0
-
-            while True:
-                chunk = await file.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-
-                headers = {
-                    "Content-Range": f"bytes {uploaded_size}-{uploaded_size + len(chunk) - 1}/{total_size}",
-                    "Content-Length": str(len(chunk)),
-                }
-
-                async with session.put(
-                    upload_url, data=chunk, headers=headers
-                ) as upload_response:
-                    if upload_response.status not in [200, 201, 206]:
+            print(f"Uploading to {upload_url}")
+            async with aiofiles.open(zip_path, "rb") as file:
+                file_data = await file.read()
+                async with session.put(upload_url, data=file_data) as upload_response:
+                    if upload_response.status == 201:
+                        print(f"Created in {upload_path}")
+                        return f"Created in {upload_path}"
+                    else:
                         raise HTTPException(
                             status_code=upload_response.status,
-                            detail="Failed to upload chunk",
+                            detail="Failed to upload file",
                         )
-
-                uploaded_size += len(chunk)
-                logger.debug(f"Uploaded {uploaded_size}/{total_size} bytes")
-
-        return f"Created in {upload_path}"
 
 
 async def zip_pyramid(path: str):
@@ -347,13 +336,21 @@ async def zip_pyramid(path: str):
         strip_file_name = os.path.basename(os.path.splitext(dzi_file)[0])
         zip_path = f"{os.path.dirname(dzi_file)}/{strip_file_name}.dzip"
 
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        # Switched to using BytesIO for now
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(
+            zip_buffer, "w", zipfile.ZIP_STORED
+        ) as zipf:  # Changed here to ZIP_STORED as the compression leve is 0 and our use case is different
             zipf.write(dzi_file, os.path.basename(dzi_file))
             for root, _, files in os.walk(dzi_dir):
                 for file in files:
                     file_path = os.path.join(root, file)
                     arcname = os.path.relpath(file_path, os.path.dirname(dzi_dir))
                     zipf.write(file_path, arcname)
+
+        # Write the buffer to disk only once
+        with open(zip_path, "wb") as f:
+            f.write(zip_buffer.getvalue())
         return zip_path
 
     # Run CPU-intensive task in a thread pool
