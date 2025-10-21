@@ -1,4 +1,4 @@
-## CreateZoom API
+# CreateZoom API
 
 ### Pyramiding
 
@@ -11,6 +11,36 @@ The library `libvips` is installed in the image.
 - `POST /deepzoom` - Submit image processing task
 - `GET /deepzoom/status/{task_id}` - Check task status
 
+# Developer
+Arda Balkir
+
+# Documentation
+
+
+# Authors
+ Arda Balkir, Maja A Puchades. 
+
+# Licence
+MIT licence
+
+# Current version
+- version 
+
+# Citation
+**CreateZoom (RRID:SCR_026625)**
+
+- Puchades MA, Yates SC, Csucs G, Carey H, Balkir A, Leergaard TB, Bjaalie JG. Software and pipelines for registration and analyses of rodent brain image data in reference atlas space. Front Neuroinform. 2025 Sep 24;19:1629388. https://doi.org/10.3389/fninf.2025.1629388
+
+
+# Acknowledgements
+CreateZoom is developed by the Neural Systems Laboratory at the Institute of Basic Medical Sciences, University of Oslo, Norway.
+CreateZoom  was developed with support from the EBRAINS infrastructure, and funding from the European Union’s Horizon Europe Programme for Research Infrastructures Grant Agreement No. 101147319 (EBRAINS 2.0).
+
+
+# Contact us
+Report issues here on github or email: support@ebrains.eu
+
+# Technical information
 ### Deployment
 
 to deploy, run build in docker and the image can be deployed anywhere. There are no secrets as the token is handled in memory.
