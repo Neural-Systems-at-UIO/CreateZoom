@@ -1,8 +1,8 @@
-# CreateZoom API
+# CreateZoom
 
 ### Pyramiding
 
-This application is an asynchronous endpoint for creating deep zoom image file formats for images, for use with QUINT and other EBrains software. Main dependencies are `asyncio, aiofiles, aiohttp` ,`fastapi` and `pyvips`.
+This application is an asynchronous endpoint for creating deep zoom image file formats for images, for use with QUINT online, LocaliView  and other EBRAINS software. Main dependencies are `asyncio, aiofiles, aiohttp` ,`fastapi` and `pyvips`.
 The library `libvips` is installed in the image.
 
 ### API Endpoints
@@ -11,20 +11,22 @@ The library `libvips` is installed in the image.
 - `POST /deepzoom` - Submit image processing task
 - `GET /deepzoom/status/{task_id}` - Check task status
 
-# Developer
-Arda Balkir
+# Access
+
+- https://localiview.apps.ebrains.eu/
+- https://rodentworkbench.apps.ebrains.eu/
+
+# Latest stable version
 
 # Documentation
 
+# Contributors
 
-# Authors
- Arda Balkir, Maja A Puchades. 
+- Programming: Arda Balkir
+- Conception, design, validation: Maja A Puchades, Sharon C Yates, Arda Balkir, Jan G Bjaalie. 
 
 # Licence
 MIT licence
-
-# Current version
-- version 
 
 # Citation
 **CreateZoom (RRID:SCR_026625)**
